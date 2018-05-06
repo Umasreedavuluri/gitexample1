@@ -1,0 +1,421 @@
+{\rtf1\ansi\ansicpg1252\deff0\nouicompat\deflang1033{\fonttbl{\f0\fnil\fcharset0 Calibri;}}
+{\*\generator Riched20 10.0.16299}\viewkind4\uc1 
+\pard\sa200\sl276\slmult1\f0\fs22\lang9\par
+\par
+\b Overview\b0\par
+A service is a component which runs in the background, without direct interaction with the user. As the service has no user interface it is not bound to the lifecycle of an activity. Services are used for repetitive and potential long running operations, checking for new data, data processing, indexing content, etc.\par
+\par
+The IntentService class provides a straightforward structure for running an operation on a single background thread. IntentService runs outside the application in a background process, so the process will run even if your application is closed.\par
+\par
+A few limitations of an IntentService to be aware of:\par
+\par
+    You cannot affect the user interface from this background service directly\par
+    Requests are handled on a single worker thread and processes just one request at a time.\par
+    You cannot easily cancel an intent service once you start one\par
+\par
+However, in most cases an IntentService is the preferred way to simple background operations.\par
+\b In Comparison to AsyncTask\b0\par
+\par
+A common point of confusion is when to use an AsyncTask and when to use an IntentService. An AsyncTask is tightly bound to a particular Activity. In other words, if the Activity is destroyed or the configuration changes then the AsyncTask will not be able to update the UI on completion. For short one-off background tasks tightly coupled to updating an Activity, we should use an AsyncTask. A good example is for a several second network request that will populate data into a ListView.\par
+\par
+IntentService is geared towards longer running tasks that should run in the background, independent of the activity that is currently open and being viewed. The activity can be switched or the app can be paused and the IntentService will still continue to run in the background. For longer running tasks that are independent of a particular Activity, use IntentService.\par
+Launchers\par
+\par
+Services can be thought of at a high-level as background tasks that run independent of the rest of the app. The services are "launched" or started by a few different types of "triggers". Refer to the following table to better understand the launchers that trigger the start of a service:\par
+Trigger \tab Description \tab Example\par
+Intent \tab Trigger directly from an activity or fragment after user action \tab Starts an image upload\par
+AlarmManager \tab Trigger at a specified time in the future or at a recurring interval \tab Poll for new updates\par
+GCM \tab Trigger when a push message is received through cloud messaging \tab Chat message received\par
+BroadcastReceiver \tab Trigger when a particular broadcast message is received \tab Launch on device bootup\par
+Sensors \tab Trigger when a particular sensor value is received \tab Geofencing location update\par
+\par
+Since most developer created services are short-lived task-based, they should be running for a finite amount of time after being triggered. Generally speaking, developers should be wary of building extended-run services.\par
+Outputs\par
+\par
+Remember that a service is not bound to the Activity and cannot modify views within the UI directly. Instead, a service tends to have very specific outputs after running that are not directly associated with the UI. Refer to the following table to better understand the outputs created by services:\par
+Output \tab Description \tab Example\par
+Notifications \tab Creates a dashboard notification to alert the user \tab New direct message received\par
+Broadcasts \tab Triggers a broadcast message to be received \tab Activity wants to add a new chat message\par
+SQLite \tab Write data received into the local database \tab Store new content for querying later\par
+Files \tab Cache blob data such as images or json to file \tab Cache images to be displayed quickly later\par
+Prefs \tab Save key-values to shared preferences \tab Store a flag to display a message on next app open\par
+\par
+Note that we can use broadcasts to trigger updates within our app while the app is running. In this way, the activity can update the UI accordingly after being told to by a service broadcast.\par
+Creating an IntentService\par
+\par
+First, you define a class within your application that extends IntentService and defines the onHandleIntent which describes the work to do when this intent is executed:\par
+\par
+public class MyTestService extends IntentService \{\par
+    // Must create a default constructor\par
+    public MyTestService() \{\par
+        // Used to name the worker thread, important only for debugging.\par
+        super("test-service");\par
+    \}\par
+\par
+    @Override\par
+    public void onCreate() \{\par
+        super.onCreate(); // if you override onCreate(), make sure to call super().\par
+        // If a Context object is needed, call getApplicationContext() here.\par
+    \}\par
+\par
+    @Override\par
+    protected void onHandleIntent(Intent intent) \{\par
+        // This describes what will happen when service is triggered\par
+    \}\par
+\}\par
+\par
+Now we can use this service within our application.\par
+Registering the IntentService\par
+\par
+Each service needs to be registered in the manifest for your app:\par
+\par
+<application\par
+        android:icon="@drawable/icon"\par
+        android:label="@string/app_name">\par
+\par
+        <service\par
+          android:name=".MyTestService"\par
+          android:exported="false"/>\par
+<application/>\par
+\par
+Notice that we specify this in the manifest file with the name and exported properties set. exported determines whether or not the service can be executed by other applications.\par
+Executing the IntentService\par
+\par
+Once we have defined the service, let's take a look at how to trigger the service and pass the service data. This is done using the same Intent system we are already familiar with. We simply create an intent like normal specifying the IntentService to execute:\par
+\par
+public class MainActivity extends Activity \{ \par
+    // Call `launchTestService()` in the activity\par
+    // to startup the service\par
+    public void launchTestService() \{\par
+        // Construct our Intent specifying the Service\par
+        Intent i = new Intent(this, MyTestService.class);\par
+        // Add extras to the bundle\par
+        i.putExtra("foo", "bar");\par
+        // Start the service\par
+        startService(i);\par
+    \}\par
+\}\par
+\par
+You can start the IntentService from any Activity or Fragment at any time during your application. Once you call startService(), the IntentService does the work defined in its onHandleIntent() method, and then stops itself.\par
+Communicating from a Service to an Application\par
+\par
+The next step is to be able to communicate data from the IntentService back to the Application. This allows the application to act based on the results of the IntentService. This is done using one of two approaches:\par
+\par
+    ResultReceiver - Generic callback interface for sending results between service and activity. If your service only needs to connect with its parent application in a single place, use this approach.\par
+    BroadcastReceiver - Used to create a generic broadcast event which can then be picked up by any application. If your service needs to communicate with multiple components that want to listen for communication, use this approach.\par
+\par
+Communicating with a ResultReceiver\par
+\par
+In many cases, an IntentService only needs to communicate with the activity or application that spawns it. If this is the case, where only the parent application needs to receive data, then let's take a look at a simple way to communicate using a ResultReceiver. First, let's define our ResultReceiver which should manage communication via method callbacks:\par
+\par
+// Defines a generic receiver used to pass data to Activity from a Service\par
+public class MyTestReceiver extends ResultReceiver \{\par
+  private Receiver receiver;\par
+\par
+  // Constructor takes a handler\par
+  public MyTestReceiver(Handler handler) \{\par
+      super(handler);\par
+  \}\par
+\par
+  // Setter for assigning the receiver\par
+  public void setReceiver(Receiver receiver) \{\par
+      this.receiver = receiver;\par
+  \}\par
+\par
+  // Defines our event interface for communication\par
+  public interface Receiver \{\par
+     void onReceiveResult(int resultCode, Bundle resultData);\par
+  \}\par
+\par
+  // Delegate method which passes the result to the receiver if the receiver has been assigned\par
+  @Override\par
+  protected void onReceiveResult(int resultCode, Bundle resultData) \{\par
+      if (receiver != null) \{\par
+        receiver.onReceiveResult(resultCode, resultData);\par
+      \}\par
+  \}\par
+\}\par
+\par
+This class is a simple intermediary that can then be used to trigger callbacks from the service in order to pass events to the parent Activity. This is useful when you want to act on the result of the service. Next, when we want to trigger the service to start, we just need to pass the IntentService a reference to the receiver and then setup a receiver callback:\par
+\par
+public class MainActivity extends Activity \{\par
+  public MyTestReceiver receiverForTest;\par
+\par
+  @Override\par
+  protected void onCreate(Bundle savedInstanceState) \{\par
+    super.onCreate(savedInstanceState);\par
+    setContentView(R.layout.activity_main);\par
+    setupServiceReceiver();\par
+  \}\par
+\par
+  // Starts the IntentService\par
+  public void onStartService() \{\par
+    Intent i = new Intent(this, MyTestService.class);\par
+    i.putExtra("foo", "bar");\par
+    i.putExtra("receiver", receiverForTest);\par
+    startService(i);\par
+  \}\par
+\par
+  // Setup the callback for when data is received from the service\par
+  public void setupServiceReceiver() \{\par
+    receiverForTest = new MyTestReceiver(new Handler());\par
+    // This is where we specify what happens when data is received from the service\par
+    receiverForTest.setReceiver(new MyTestReceiver.Receiver() \{\par
+      @Override\par
+      public void onReceiveResult(int resultCode, Bundle resultData) \{\par
+        if (resultCode == RESULT_OK) \{\par
+          String resultValue = resultData.getString("resultValue");\par
+          Toast.makeText(MainActivity.this, resultValue, Toast.LENGTH_SHORT).show();\par
+        \}\par
+      \}\par
+    \});\par
+  \}\par
+\}\par
+\par
+Now that we have created the Receiver and defined a Receiver callback in the Activity, we can now freely send message to our Activity at any time within the Service by accessing the Receiver:\par
+\par
+public class MyTestService extends IntentService \{\par
+  public MyTestService() \{\par
+    super("test-service");\par
+  \}\par
+\par
+  @Override\par
+  protected void onHandleIntent(Intent intent) \{\par
+    // Extract the receiver passed into the service\par
+    ResultReceiver rec = intent.getParcelableExtra("receiver");\par
+    // Extract additional values from the bundle\par
+    String val = intent.getStringExtra("foo");\par
+    // To send a message to the Activity, create a pass a Bundle\par
+    Bundle bundle = new Bundle();\par
+    bundle.putString("resultValue", "My Result Value. Passed in: " + val);\par
+    // Here we call send passing a resultCode and the bundle of extras\par
+    rec.send(Activity.RESULT_OK, bundle);\par
+  \}\par
+\}\par
+\par
+Calling res.send will trigger the onReceiveResult callback to be called within our Activity and the return value will be displayed in the toast in this case.\par
+Communicating with a BroadcastReceiver\par
+\par
+Using a ResultReceiver from above to communicate is not always the right approach. There are several issues with the ResultReceiver approach including the fact that if the app quits, then the receiver will not work when the app is relaunched. The receiver also requires each and every activity that wants to receive messages to have a reference to the receiver object passed into the service.\par
+\par
+Instead, in many cases we might want one application to be able to pick up IntentService messages even after it has been fully relaunched or we want multiple applications to be able to receive the messages from the service. In these cases, we should use a BroadcastReceiver instead. For this example we are using the LocalBroadcastManager which only allows our app to communicate internally between Service and Activity. Let's see how to publish local broadcast messages within the service:\par
+\par
+public class MyTestService extends IntentService \{\par
+  public static final String ACTION = "com.codepath.example.servicesdemo.MyTestService";\par
+\par
+  public MyTestService() \{\par
+    super("test-service");\par
+  \}\par
+\par
+  @Override\par
+  protected void onHandleIntent(Intent intent) \{\par
+      // Fetch data passed into the intent on start\par
+      String val = intent.getStringExtra("foo");\par
+      // Construct an Intent tying it to the ACTION (arbitrary event namespace)\par
+      Intent in = new Intent(ACTION);\par
+      // Put extras into the intent as usual\par
+      in.putExtra("resultCode", Activity.RESULT_OK);\par
+      in.putExtra("resultValue", "My Result Value. Passed in: " + val);\par
+      // Fire the broadcast with intent packaged\par
+      LocalBroadcastManager.getInstance(this).sendBroadcast(in);\par
+      // or sendBroadcast(in) for a normal broadcast;\par
+  \}\par
+\}\par
+\par
+This service is now sending this broadcast message to any application that wants to listen for these messages based on the ACTION namespace. Next, we need to construct a new BroadcastReceiver, register to listen and define the onReceive method to handle the messages within our Activity:\par
+\par
+public class MainActivity extends Activity \{\par
+    // ...onCreate...\par
+\par
+    // Launching the service\par
+    public void onStartService(View v) \{\par
+      Intent i = new Intent(this, MyTestService.class);\par
+      i.putExtra("foo", "bar");\par
+      startService(i);\par
+    \}\par
+\par
+    @Override\par
+    protected void onResume() \{\par
+        super.onResume();\par
+        // Register for the particular broadcast based on ACTION string\par
+        IntentFilter filter = new IntentFilter(MyTestService.ACTION);\par
+        LocalBroadcastManager.getInstance(this).registerReceiver(testReceiver, filter);\par
+        // or `registerReceiver(testReceiver, filter)` for a normal broadcast\par
+    \}\par
+\par
+    @Override\par
+    protected void onPause() \{\par
+        super.onPause();\par
+        // Unregister the listener when the application is paused\par
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(testReceiver);\par
+        // or `unregisterReceiver(testReceiver)` for a normal broadcast\par
+    \}\par
+\par
+    // Define the callback for what to do when data is received\par
+    private BroadcastReceiver testReceiver = new BroadcastReceiver() \{\par
+        @Override\par
+        public void onReceive(Context context, Intent intent) \{\par
+            int resultCode = intent.getIntExtra("resultCode", RESULT_CANCELED);\par
+            if (resultCode == RESULT_OK) \{\par
+                String resultValue = intent.getStringExtra("resultValue");\par
+                Toast.makeText(MainActivity.this, resultValue, Toast.LENGTH_SHORT).show();\par
+            \}\par
+        \}\par
+    \};\par
+\}\par
+\par
+Keep in mind that any application and any activity can "listen" for the messages using this same approach. This is what makes the BroadcastReceiver a more powerful approach for communication between services and activities. See the official tutorial for reporting status from an IntentService for more details.\par
+Networking with IntentService\par
+\par
+If you intend to perform networking within the IntentService, keep in mind that you do not necessarily need to be concerned about blocking the primary thread. The service is already running in the background so you will want to avoid executing AsyncTasks within a Service. Instead, for simple operations, you can send networking requests synchronously. For example, when using an IntentService with the Android Async HTTP library, you need to use the synchronous client SyncHttpClient instead of the default asynchronous version:\par
+\par
+public class NetworkedIntentService extends IntentService \{\par
+   private AsyncHttpClient aClient = new SyncHttpClient();\par
+\par
+    @Override\par
+    protected void onHandleIntent(Intent intent) \{\par
+       // Send synchronous request\par
+       aClient.get(this, someUrlHere, new AsyncHttpResponseHandler() \{\par
+           // ... onSuccess here\par
+       \});\par
+    \}\par
+\}\par
+\par
+See this service example for a more complete example. If you try to send asynchronous requests, you will get errors about the thread no longer exists since the service will terminate before the network requests complete.\par
+Using with AlarmManager for Periodic Tasks\par
+\par
+Suppose we need to set periodically executing background tasks. For example, we want to be able to check for new emails or content from a server every 15 minutes even if our application isn't running. This is useful for apps like email clients, news readers, instant messaging clients, et al. In this case, we don't necessarily need a long running task that runs forever. That would take drain battery life significantly and isn't what we want anyways.\par
+\par
+For most of these common cases (checking for new data), what we really want to do is setup a scheduler that triggers a background service at a regular interval of our choosing. The best way to achieve this is to use an IntentService in conjunction with the AlarmManager. First, we want to define the IntentService to have periodically execute:\par
+\par
+public class MyTestService extends IntentService \{\par
+    public MyTestService() \{\par
+       super("MyTestService");\par
+    \}\par
+\par
+    @Override\par
+    protected void onHandleIntent(Intent intent) \{\par
+       // Do the task here\par
+       Log.i("MyTestService", "Service running");\par
+    \}\par
+\}\par
+\par
+Now we want to setup a way to execute this periodically at a specified interval. Enter the AlarmManager to execute a periodic task by firing a BroadcastIntent. First though, let's define the BroadcastReceiver that will be executed by the alarm and will launch our IntentService:\par
+\par
+public class MyAlarmReceiver extends BroadcastReceiver \{\par
+  public static final int REQUEST_CODE = 12345;\par
+  public static final String ACTION = "com.codepath.example.servicesdemo.alarm";\par
+\par
+  // Triggered by the Alarm periodically (starts the service to run task)\par
+  @Override\par
+  public void onReceive(Context context, Intent intent) \{\par
+    Intent i = new Intent(context, MyTestService.class);\par
+    i.putExtra("foo", "bar");\par
+    context.startService(i);\par
+  \}\par
+\}\par
+\par
+Now we have our IntentService task defined and our receiver that will be setup to periodically execute in order to trigger the service. Next, let's register both our IntentService and MyAlarmReceiver in the AndroidManifest.xml.\par
+\par
+<receiver\par
+    android:name=".MyAlarmReceiver"\par
+    android:process=":remote" >\par
+</receiver>\par
+\par
+<service\par
+    android:name=".MyTestService"\par
+    android:exported="false" />\par
+\par
+(Note that we need to define android:process=":remote" so that the BroadcastReceiver will run in a separate process so that it will continue to stay alive if the app has closed. See this Stack Overflow post for more details.)\par
+\par
+Finally, we need to actually start the periodic alarm that will trigger the receiver by registering with the Alarm system service. Let's setup the recurring alarm in our Activity:\par
+\par
+public class MainActivity extends Activity \{\par
+  @Override\par
+  protected void onCreate(Bundle savedInstanceState) \{\par
+    super.onCreate(savedInstanceState);\par
+    setContentView(R.layout.activity_main);\par
+    scheduleAlarm();\par
+  \}\par
+  \par
+  // Setup a recurring alarm every half hour\par
+  public void scheduleAlarm() \{\par
+    // Construct an intent that will execute the AlarmReceiver\par
+    Intent intent = new Intent(getApplicationContext(), MyAlarmReceiver.class);\par
+    // Create a PendingIntent to be triggered when the alarm goes off\par
+    final PendingIntent pIntent = PendingIntent.getBroadcast(this, MyAlarmReceiver.REQUEST_CODE,\par
+        intent, PendingIntent.FLAG_UPDATE_CURRENT);\par
+    // Setup periodic alarm every every half hour from this point onwards\par
+    long firstMillis = System.currentTimeMillis(); // alarm is set right away\par
+    AlarmManager alarm = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);\par
+    // First parameter is the type: ELAPSED_REALTIME, ELAPSED_REALTIME_WAKEUP, RTC_WAKEUP\par
+    // Interval can be INTERVAL_FIFTEEN_MINUTES, INTERVAL_HALF_HOUR, INTERVAL_HOUR, INTERVAL_DAY\par
+    alarm.setInexactRepeating(AlarmManager.RTC_WAKEUP, firstMillis,\par
+        AlarmManager.INTERVAL_HALF_HOUR, pIntent);\par
+  \}\par
+\}\par
+\par
+This will cause the alarm to trigger immediately and then fire every half hour from that point forward. Each time the alarm fires, the MyAlarmReceiver broadcast intent is triggered which starts up the IntentService. The PendingIntent.FLAG_UPDATE_CURRENT flag ensures that if the alarm fires very quickly, that the events will replace each other rather than stack up. See the scheduling alarms docs for more examples of different types of scheduling.\par
+\par
+After setting an alarm, if we ever want to cancel the alarm, we can do this with:\par
+\par
+public void cancelAlarm() \{\par
+    Intent intent = new Intent(getApplicationContext(), MyAlarmReceiver.class);\par
+    final PendingIntent pIntent = PendingIntent.getBroadcast(this, MyAlarmReceiver.REQUEST_CODE,\par
+       intent, PendingIntent.FLAG_UPDATE_CURRENT);\par
+    AlarmManager alarm = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);\par
+    alarm.cancel(pIntent);\par
+\}\par
+\par
+You can see a more detailed information here or here. For a more detailed example that includes starting the alarm when the phone boots up, check out this blog post.\par
+Starting a Service at Device Boot\par
+\par
+In certain cases, we might want a service to start right after the device boots up. This is a specific case of a broader trigger of launching a service when a particular broadcast is received by your application. To start a service when a broadcast (such as boot message) is received, we can start by adding the necessary permissions to receive this message in our manifest AndroidManifest.xml in the <manifest> element:\par
+\par
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\par
+<uses-permission android:name="android.permission.WAKE_LOCK" />\par
+\par
+We need to link this boot message with a particular broadcast receiver which will receive and processes the "boot" message issued by the phone. Second, let's define our broadcast receiver class as extending from WakefulBroadcastReceiver which ensures the device will stay awake until service has been started:\par
+\par
+package com.codepath.example;\par
+\par
+// WakefulBroadcastReceiver ensures the device does not go back to sleep \par
+// during the startup of the service\par
+public class BootBroadcastReceiver extends WakefulBroadcastReceiver \{\par
+    @Override\par
+    public void onReceive(Context context, Intent intent) \{\par
+        // Launch the specified service when this message is received\par
+        Intent startServiceIntent = new Intent(context, MyTestService.class);\par
+        startWakefulService(context, startServiceIntent);\par
+    \}\par
+\}\par
+\par
+Now that we've created the receiver to start our service, within our manifest AndroidManifest.xml in the <application> element, we need to add our broadcast receiver specifying a fully qualified path:\par
+\par
+<receiver android:name="com.codepath.example.BootBroadcastReceiver">  \par
+    <intent-filter>  \par
+        <action android:name="android.intent.action.BOOT_COMPLETED" />  \par
+    </intent-filter>  \par
+</receiver>\par
+\par
+This registers the receiver and applies the BOOT_COMPLETED message which ensures the receiver is launched when the device boots up. The boot message is received and the "wakeful" receiver launches the service. Don't forget to release the wake lock within onHandleIntent so the device can go back to sleep after the service is launched:\par
+\par
+public class MyTestService extends IntentService \{\par
+  // ...\par
+  @Override\par
+  protected void onHandleIntent(Intent intent) \{\par
+      // Release the wake lock provided by the WakefulBroadcastReceiver.\par
+      WakefulBroadcastReceiver.completeWakefulIntent(intent);\par
+  \}\par
+\}\par
+\par
+With this completed, our service will start automatically whenever the device boots!\par
+Custom Services\par
+\par
+In 90% of cases when you need a background service, you will grab IntentService as your tool. However, IntentService does have a few limitations. The biggest limitation is that the IntentService uses a single worker thread to handle start requests one at a time and processes them serially. Therefore, as long as you don't require that your service handle multiple requests simultaneously, typically the IntentService is the best tool for the job.\par
+\par
+However, in certain specialized cases where you do need the requests to be processed in parallel, you cannot use IntentService and instead might want to extend from Service directly. Note that the base Service by default runs in the same process as the application in which it is declared and in the main UI thread of that application. To avoid impacting application performance, you have to manage your own threading within the Service.\par
+\par
+\par
+}
+ 
